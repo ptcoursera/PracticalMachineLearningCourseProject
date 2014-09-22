@@ -1,0 +1,161 @@
+---
+title: "Course WriteUp"
+output: html_document
+---
+```{r library loading, include=FALSE, results="hide"}
+rm(list = ls())
+
+library(caret)
+library(kernlab)
+
+set.seed(1000)
+```
+
+For the project, my final on a gaussian kernel SVM with hyperparameters `C = 10000` and `sigma = 0.0169`. Necessary libraries are `caret`,`kernlab`, and `e1071`.
+
+## 1) Removing bad features
+
+Before any partitioning of the data, I first inspected the data for bad features in the following code. Any features containing NANs selected for removal (`nainds`). To remove low variance predictors, `nearZeroVar` with default parameters was used (`smallvarinds`). The first 7 features were also removed because they contained irrelevant metadata that would cause overfitting (`userselectedinds`).
+
+```{r loading a preprocess}
+data.raw <- read.csv(file="pml-training.csv", header=TRUE, sep=",")
+
+smallvarinds = nearZeroVar(data.raw)
+nainds = which(vapply(data.raw, function(x){sum(is.na(x))>0}, TRUE))
+userselectedinds = 1:7 
+
+removedindices = unique(c(nainds, smallvarinds, userselectedinds)) 
+data.raw <- data.raw[,-removedindices]
+```
+
+52 predictors were kept.
+
+## 2) Partitioning data
+
+60% of the observations were used for training.
+```{r partitioning}
+inTrain <- createDataPartition(y=data.raw$classe, p=0.6,list=FALSE)
+training <- data.raw[inTrain,]
+testing <- data.raw[-inTrain,]
+```
+
+## 3) Training and cross validation
+
+I experimented with three classifiers:
+
+* Gradient Boosted Classification Trees using `gbm` within `caret`
+* Gaussian Kernel SVM using `ksvm` from `kernlab`
+* K-Nearest Neighbors using `knn3` within `caret`
+
+ I performed ___10-fold cross validation___ with no repetitions. For `gbm` and `knn3`, I used the `trControl` parameter with the following value.
+
+```{r trcontrol}
+## train control options
+fitControl <- trainControl(method = "repeatedcv",
+                           number = 10,
+                           repeats = 1,
+                           )
+```
+
+For the SVM C hyperparameter, this was tuned with `tune.svm` from package `e1071`. Similarly the K-Nearest Neighbors k parameter was tuned using values 1,3,5,7,and 9. To save on time, the parameters of the Gradient Boosted Model were chosen by recommendations from the community.
+
+```{r train,results="hide"}
+## train classifiers
+
+#svmhp <- tune.svm(classe~., data = training, cost = 10^(0:4)) 
+model.svm <- ksvm(classe~.,data=training,kernel="rbfdot",C=10000, cross=10)
+
+gbmGrid <-  expand.grid(interaction.depth = 5,n.trees = 200,shrinkage = 0.1)
+model.gbm <- train(classe ~ .,data=training, method="gbm", tuneGrid=gbmGrid, trControl=fitControl)
+
+knnGrid <- expand.grid(k = c(1)) 
+model.knn <- train(classe ~ ., data=training, method="knn", tuneGrid = knnGrid, trControl=fitControl)
+
+```
+
+## 4) Evaluation on test set
+
+After training the models, they were used to predict the testing data.
+
+```{r predict}
+## predict after training
+preds.gbm = predict(model.gbm,newdata=testing)
+preds.svm = predict(model.svm,newdata=testing)
+preds.knn = predict(model.knn, newdata=testing)
+
+```
+
+To compare the classifiers, a plot was generated comparing the balanced accuracies:
+
+```{r cf plot}
+actual = testing$classe
+
+ba = data.frame()
+cf.gbm = confusionMatrix(preds.gbm, actual)
+ba = rbind(ba, data.frame(type = rep('GBM',5), class = c("A", "B", "C","D","E"),acc = cf.gbm$byClass[,8]))
+cf.svm = confusionMatrix(preds.svm, actual)
+ba = rbind(ba, data.frame(type = rep('SVM',5), class = c("A", "B", "C","D","E"),acc = cf.svm$byClass[,8]))
+cf.knn = confusionMatrix(preds.knn, actual)
+ba = rbind(ba, data.frame(type = rep('KNN',5), class = c("A", "B", "C","D","E"),acc = cf.knn$byClass[,8]))
+
+library(lattice)
+barchart(acc~type,data=ba,groups=class, main="Balanced Accuracies for different classes grouped by classifier", ylim=c(0.7, 1), auto.key=TRUE, ylab="")
+
+```
+
+
+SVM slightly outperformed GBM. A closer view will reveal the major differences.
+
+```{r}
+library(lattice)
+barchart(acc~type,data=ba,groups=class, main="Balanced Accuracies for different classes grouped by classifier", ylim=c(0.9, 1), auto.key=TRUE, ylab="")
+
+
+```
+
+GBM and SVM seem to be somewhat the same, where as KNN falls behind. 
+
+To get a better sense of how whether SVM or GBM is the more robust classifiers, I performed classification once more on the ___first 5 principal components___. The idea was to see how the accuruacies dropped when a lot of information was removed. The plot from this procedure was shown below:
+
+```{r pca plot, results="hide"}
+#perform pca
+
+end = ncol(training)
+preObj <- preProcess(training[,-end],method="pca", pcaComp=5)
+pcatraining <- predict(preObj, training[,-end])
+pcatraining$classe <-training$classe
+
+pca.model.svm <- ksvm(classe~.,data=pcatraining,kernel="rbfdot",C=10000, cross=10)
+pca.model.gbm <- train(classe ~ .,data=pcatraining, method="gbm", tuneGrid=gbmGrid,trControl=fitControl)
+pca.model.knn <- train(classe ~ ., data=pcatraining, method="knn", tuneGrid = knnGrid,trControl=fitControl)
+
+pcatesting = predict(preObj, testing[,-end])
+pca.preds.gbm = predict(pca.model.gbm, newdata=pcatesting)
+pca.preds.svm = predict(pca.model.svm, newdata=pcatesting)
+pca.preds.knn = predict(pca.model.knn, newdata=pcatesting)
+
+pca.ba = data.frame()
+pca.cf.gbm = confusionMatrix(pca.preds.gbm, actual)
+pca.ba = rbind(pca.ba, data.frame(type = rep('GBM',5), class = c("A", "B", "C","D","E"),acc = pca.cf.gbm$byClass[,8]))
+pca.cf.svm = confusionMatrix(pca.preds.svm, actual)
+pca.ba = rbind(pca.ba, data.frame(type = rep('SVM',5), class = c("A", "B", "C","D","E"),acc = pca.cf.svm$byClass[,8]))
+pca.cf.knn = confusionMatrix(pca.preds.knn, actual)
+pca.ba = rbind(pca.ba, data.frame(type = rep('KNN',5), class = c("A", "B", "C","D","E"),acc = pca.cf.knn$byClass[,8]))
+
+```{r pcaplot}
+library(lattice)
+barchart(acc~type,data=pca.ba,groups=class, main="Balanced Accuracies for different classes grouped by classifier w/ PCA", ylim=c(0.7, 1), auto.key=TRUE, ylab="")
+
+```
+
+From the two plots above I decided to use SVM as the final classifier, since it had less of a drop in accuracy after dimensionality reduction.
+
+## 5) Out of sample error estimation
+
+Out-of-sample error estimation was based on the accuracy reported on the testing set predictions for the SVM classifier.
+
+```{r error rate}
+print(cf.svm$overall)
+error = 1-cf.svm$overall[1]
+print(error)
+```
