@@ -55,7 +55,7 @@ if (window.hljs && document.readyState && document.readyState === "complete") {
 </div>
 
 
-<p>For the project, my final on a gaussian kernel SVM with hyperparameters <code>C = 10000</code> and <code>sigma = 0.0169</code>. Necessary libraries are <code>caret</code>,<code>kernlab</code>, and <code>e1071</code>.</p>
+<p>For the project, my final model was a gaussian kernel SVM with hyperparameters <code>C = 10000</code> and <code>sigma = 0.0169</code>. Necessary libraries are <code>caret</code>,<code>kernlab</code>, and <code>e1071</code>.</p>
 <div id="removing-bad-features" class="section level2">
 <h2>1) Removing bad features</h2>
 <p>Before any partitioning of the data, I first inspected the data for bad features in the following code. Any features containing NANs selected for removal (<code>nainds</code>). To remove low variance predictors, <code>nearZeroVar</code> with default parameters was used (<code>smallvarinds</code>). The first 7 features were also removed because they contained irrelevant metadata that would cause overfitting (<code>userselectedinds</code>).</p>
