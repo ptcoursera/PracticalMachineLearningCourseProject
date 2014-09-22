@@ -91,28 +91,6 @@ fitControl &lt;- trainControl(method = &quot;repeatedcv&quot;,
                            repeats = 1,
                            )</code></pre>
 <p>For the SVM C hyperparameter, this was tuned with <code>tune.svm</code> from package <code>e1071</code>. Similarly the K-Nearest Neighbors k parameter was tuned using values 1,3,5,7,and 9. To save on time, the parameters of the Gradient Boosted Model were chosen by recommendations from the community.</p>
-<pre class="r"><code>## train classifiers
-
-#svmhp &lt;- tune.svm(classe~., data = training, cost = 10^(0:4)) 
-model.svm &lt;- ksvm(classe~.,data=training,kernel=&quot;rbfdot&quot;,C=10000, cross=10)
-
-gbmGrid &lt;-  expand.grid(interaction.depth = 5,n.trees = 200,shrinkage = 0.1)
-model.gbm &lt;- train(classe ~ .,data=training, method=&quot;gbm&quot;, tuneGrid=gbmGrid, trControl=fitControl)</code></pre>
-<pre><code>## Loading required package: gbm
-## Loading required package: survival
-## Loading required package: splines
-## 
-## Attaching package: 'survival'
-## 
-## The following object is masked from 'package:caret':
-## 
-##     cluster
-## 
-## Loading required package: parallel
-## Loaded gbm 2.1
-## Loading required package: plyr</code></pre>
-<pre class="r"><code>knnGrid &lt;- expand.grid(k = c(1)) 
-model.knn &lt;- train(classe ~ ., data=training, method=&quot;knn&quot;, tuneGrid = knnGrid, trControl=fitControl)</code></pre>
 </div>
 <div id="evaluation-on-test-set" class="section level2">
 <h2>4) Evaluation on test set</h2>
